@@ -1,0 +1,5 @@
+name = "effettolab"
+main = "index.html"
+compatibility_date = "2024-01-01"
+
+[previews]
