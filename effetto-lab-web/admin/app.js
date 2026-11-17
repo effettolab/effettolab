@@ -4,6 +4,7 @@ const config = window.CMS_CONFIG || {};
 const loginScreen = document.querySelector('#login-screen');
 const appShell = document.querySelector('#app-shell');
 const loginForm = document.querySelector('#login-form');
+const resetPasswordForm = document.querySelector('#reset-password-form');
 const loginMessage = document.querySelector('#login-message');
 const globalMessage = document.querySelector('#global-message');
 const requiredConfigReady = Boolean(config.supabaseUrl && config.supabaseAnonKey && !String(config.supabaseAnonKey).includes('PEGA_AQUI'));
@@ -16,6 +17,7 @@ let portfolio = [];
 let team = [];
 let activeView = 'dashboard';
 let messageTimer = null;
+let passwordRecoveryMode = false;
 
 const viewTitles = {
   dashboard: 'Resumen', general: 'Contenido general', services: 'Servicios', portfolio: 'Galería de trabajos', team: 'Equipo'
@@ -299,27 +301,50 @@ async function verifyAdminAndOpen(session) {
   await loadData();
   setView(activeView);
 }
+
 async function initialize() {
   if (!requiredConfigReady) {
     showLoginMessage('Falta configurar la clave publishable/anon en admin/config.js. No uses service_role.',true);
     return;
   }
+
   supabase = createClient(config.supabaseUrl,config.supabaseAnonKey,{
     auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}
   });
+
   supabase.auth.onAuthStateChange((event,session) => {
-    if (event === 'SIGNED_IN' && session) {
-      queueMicrotask(() => verifyAdminAndOpen(session).catch(err => showGlobalMessage(toReadableError(err),true)));
-    }
-    if (event === 'SIGNED_OUT') {
+    if (event === 'PASSWORD_RECOVERY') {
+      passwordRecoveryMode = true;
       loginScreen.hidden = false;
       appShell.hidden = true;
+      loginForm.hidden = true;
+      resetPasswordForm.hidden = false;
+      showLoginMessage('El enlace fue validado. Ahora puedes establecer una nueva contraseña.');
+      return;
+    }
+
+    if (event === 'SIGNED_IN' && session && !passwordRecoveryMode) {
+      queueMicrotask(() => verifyAdminAndOpen(session).catch(err => showGlobalMessage(toReadableError(err),true)));
+    }
+
+    if (event === 'SIGNED_OUT') {
+      passwordRecoveryMode = false;
+      loginScreen.hidden = false;
+      appShell.hidden = true;
+      loginForm.hidden = false;
+      resetPasswordForm.hidden = true;
       currentUser = null;
     }
   });
+
   const {data,error} = await supabase.auth.getSession();
   if (error) throw error;
-  if (data.session) await verifyAdminAndOpen(data.session);
+
+  // No abrir el CMS automáticamente si Supabase acaba de devolver una sesión
+  // procedente del flujo de recuperación de contraseña.
+  if (data.session && !passwordRecoveryMode) {
+    await verifyAdminAndOpen(data.session);
+  }
 }
 
 loginForm.addEventListener('submit',async event=>{
@@ -338,6 +363,72 @@ loginForm.addEventListener('submit',async event=>{
   finally { setBusy(button,false); }
 });
 
+document.querySelector('#reset-request-button').addEventListener('click',async event=>{
+  if (!supabase) return showLoginMessage('Configura primero la conexión de Supabase.',true);
+
+  const email = document.querySelector('#login-email').value.trim();
+  if (!email) return showLoginMessage('Escribe primero tu correo electrónico.',true);
+
+  const button = event.currentTarget;
+  setBusy(button,true,'Enviando…');
+
+  try {
+    const {error} = await supabase.auth.resetPasswordForEmail(email,{
+      redirectTo:'https://effettolab.com/admin/'
+    });
+    if (error) throw error;
+
+    showLoginMessage('Si la cuenta está habilitada, recibirás un correo con las instrucciones para cambiar la contraseña.');
+  } catch(error) {
+    showLoginMessage(toReadableError(error),true);
+  } finally {
+    setBusy(button,false);
+  }
+});
+
+resetPasswordForm.addEventListener('submit',async event=>{
+  event.preventDefault();
+
+  if (!supabase || !passwordRecoveryMode) {
+    return showLoginMessage('Abre primero el enlace válido de recuperación que recibiste por correo.',true);
+  }
+
+  const password = document.querySelector('#new-password').value;
+  const confirmation = document.querySelector('#confirm-password').value;
+
+  if (password.length < 6) {
+    return showLoginMessage('La contraseña debe tener al menos 6 caracteres.',true);
+  }
+  if (password !== confirmation) {
+    return showLoginMessage('Las contraseñas no coinciden.',true);
+  }
+
+  const button = resetPasswordForm.querySelector('button[type="submit"]');
+  setBusy(button,true,'Actualizando…');
+
+  try {
+    const {error} = await supabase.auth.updateUser({password});
+    if (error) throw error;
+
+    passwordRecoveryMode = false;
+    window.history.replaceState({},document.title,'/admin/');
+
+    const {data,error:sessionError} = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    if (!data.session) throw new Error('La contraseña se actualizó, pero debes iniciar sesión nuevamente.');
+
+    resetPasswordForm.reset();
+    resetPasswordForm.hidden = true;
+    loginForm.hidden = false;
+
+    await verifyAdminAndOpen(data.session);
+    showGlobalMessage('¡Contraseña actualizada correctamente!');
+  } catch(error) {
+    showLoginMessage(toReadableError(error),true);
+  } finally {
+    setBusy(button,false);
+  }
+});
 
 document.querySelector('#magic-link-button').addEventListener('click',async event=>{
   if (!supabase) return showLoginMessage('Configura primero la conexión de Supabase.',true);
@@ -358,7 +449,6 @@ document.querySelector('#magic-link-button').addEventListener('click',async even
   } catch(error) { showLoginMessage(toReadableError(error),true); }
   finally { setBusy(button,false); }
 });
-
 
 document.querySelector('#main-nav').addEventListener('click',event=>{
   const button = event.target.closest('[data-view]');

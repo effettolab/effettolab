@@ -20,6 +20,7 @@
       <p class="eyebrow">EFFETTO LAB / ADMINISTRACIÓN</p>
       <h1>Tu taller.<br><em>Tu contenido.</em></h1>
       <p class="login-intro">Accede para administrar los textos, servicios, trabajos, equipo e imágenes del sitio web.</p>
+
       <form id="login-form" class="login-form">
         <label>Correo electrónico
           <input id="login-email" type="email" autocomplete="username" placeholder="tu correo de acceso" required>
@@ -29,7 +30,21 @@
         </label>
         <button class="button button-primary" type="submit">Entrar al panel <span>↗</span></button>
         <button id="magic-link-button" class="button button-quiet" type="button">Enviarme un enlace de acceso</button>
+        <button id="reset-request-button" class="button button-quiet" type="button">Olvidé mi contraseña</button>
       </form>
+
+      <form id="reset-password-form" class="login-form" hidden>
+        <h2>Crear nueva contraseña</h2>
+        <p class="login-intro">Escribe y confirma la nueva contraseña para tu cuenta de administrador.</p>
+        <label>Nueva contraseña
+          <input id="new-password" type="password" minlength="6" autocomplete="new-password" required>
+        </label>
+        <label>Confirmar contraseña
+          <input id="confirm-password" type="password" minlength="6" autocomplete="new-password" required>
+        </label>
+        <button class="button button-primary" type="submit">Guardar nueva contraseña</button>
+      </form>
+
       <p id="login-message" class="message" role="status" aria-live="polite"></p>
       <p class="login-foot">Acceso privado para administradores autorizados.</p>
     </section>
